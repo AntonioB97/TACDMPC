@@ -2,16 +2,14 @@ import torch
 import numpy as np
 from typing import Callable, List, Tuple, Any
 
-
 class ParallelEnvManager:
     """
-    A manager for running multiple instances environment in parallel.
-
+    Un gestore per eseguire istanze multiple di un ambiente in parallelo.
     """
 
     def __init__(self, env_fn: Callable, num_envs: int, device: torch.device):
         """
-        Initializes N environments.
+        Inizializza N ambienti.
         """
         self.envs = [env_fn() for _ in range(num_envs)]
         self.num_envs = num_envs
@@ -21,13 +19,14 @@ class ParallelEnvManager:
             self.single_observation_space_shape = self.envs[0].observation_space.shape
             self.single_action_space_shape = self.envs[0].action_space.shape
         else:
-            print("Warning: The environment does not seem to have 'observation_space' or 'action_space' attributes.")
+            print("Attenzione: L'ambiente non sembra avere gli attributi 'observation_space' o 'action_space'.")
 
     def reset(self) -> torch.Tensor:
         """
-        Resets all environments and returns a stacked tensor of observations.
+        Resetta tutti gli ambienti e restituisce un tensore delle osservazioni.
         """
-        # FIX: gym.reset() returns a tuple (observation, info). We only need the observation.
+        # FIX: gym.reset() restituisce una tupla (osservazione, info).
+        # Estraiamo solo il primo elemento (l'osservazione).
         observations = [env.reset()[0] for env in self.envs]
         return torch.from_numpy(np.stack(observations)).to(self.device, dtype=torch.float32)
 
@@ -45,6 +44,7 @@ class ParallelEnvManager:
             terminateds.append(terminated)
             truncateds.append(truncated)
             infos.append(info)
+
         return (
             torch.from_numpy(np.stack(next_states)).to(self.device, dtype=torch.float32),
             torch.from_numpy(np.array(rewards)).to(self.device, dtype=torch.float32),
@@ -54,5 +54,5 @@ class ParallelEnvManager:
         )
 
     def close(self):
-        """Closes all environments."""
+        """Chiude tutti gli ambienti."""
         [env.close() for env in self.envs]

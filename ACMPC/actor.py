@@ -1,34 +1,30 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from typing import Tuple, Optional
 from torch.distributions import Normal
-
-# Importa le classi necessarie
 from DifferentialMPC import DifferentiableMPCController, GeneralQuadCost
 
 
-
 class ActorMPC(nn.Module):
-    # Aggiunto observation_dim al costruttore ---
     def __init__(self, nx: int, nu: int, horizon: int, dt: float, f_dyn,
+                 # ### MODIFICA: I limiti devono essere torch.Tensor, non float ###
+                 u_min: torch.Tensor,
+                 u_max: torch.Tensor,
                  f_dyn_jac=None, device: str = "cuda",
                  grad_method: str = "auto_diff",
-                 observation_dim: Optional[int] = None): # Nuovo parametro
+                 observation_dim: Optional[int] = None):
         super().__init__()
         self.nx, self.nu, self.horizon, self.dt = nx, nu, horizon, dt
         self.device = torch.device(device)
         self.dtype = torch.float32
 
-        # Se observation_dim non è specificato, usa nx per retrocompatibilità
         input_dim = observation_dim if observation_dim is not None else nx
-
         output_dim = horizon * (nx + nu) * 2
 
         self.cost_map_net = nn.Sequential(
-            nn.Linear(input_dim, 512), nn.ReLU(), # Usa input_dim
+            nn.Linear(input_dim, 512), nn.ReLU(),
             nn.Linear(512, 512), nn.ReLU(),
             nn.Linear(512, output_dim)
         ).to(self.device, dtype=self.dtype)
@@ -50,7 +46,10 @@ class ActorMPC(nn.Module):
             horizon=horizon, cost_module=cost_module,
             f_dyn_jac=f_dyn_jac, device=device,
             reg_eps=1e-2,
-            grad_method=grad_method
+            grad_method=grad_method,
+            # I nomi corretti degli argomenti sono u_lower e u_upper
+            u_min=u_min,
+            u_max=u_max
         )
 
         self.log_std = nn.Parameter(torch.full((nu,), 0.0, device=self.device, dtype=self.dtype))
@@ -86,9 +85,7 @@ class ActorMPC(nn.Module):
 
         self._update_cost_module(x)
 
-        U_init = torch.randn(x.shape[0], self.horizon, self.nu, device=self.device, dtype=self.dtype) * 0.01
-
-        # Passa solo la parte di stato fisico [x, y, theta] all'MPC
+        U_init = torch.zeros(x.shape[0], self.horizon, self.nu, device=self.device, dtype=self.dtype)
         predicted_states, predicted_actions = self.mpc(x[:, :self.nx], U_init)
 
         u_mpc_mean = predicted_actions[:, 0]
@@ -107,7 +104,6 @@ class ActorMPC(nn.Module):
         self._update_cost_module(x)
 
         U_init = torch.zeros(x.shape[0], self.horizon, self.nu, device=self.device, dtype=self.dtype)
-        # Passa solo la parte di stato fisico [x, y, theta] all'MPC
         _, predicted_actions = self.mpc(x[:, :self.nx], U_init)
         u_mpc_mean = predicted_actions[:, 0]
 

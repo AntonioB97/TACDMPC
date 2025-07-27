@@ -13,13 +13,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class CheckpointManager:
     """
     Gestisce il salvataggio e il caricamento dei checkpoint di addestramento.
+    Salva il checkpoint migliore basandosi su una metrica di performance (es. reward).
     """
 
     def __init__(self, checkpoint_dir: str, max_to_keep: int = 5):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.max_to_keep = max_to_keep
-        self.best_loss = float('inf')
+        # Tracciamo il miglior reward, che vogliamo massimizzare
+        self.best_reward = -float('inf')
 
     def save(self,
              completed_step_idx: int,
@@ -28,11 +30,13 @@ class CheckpointManager:
              actor_optimizer: optim.Optimizer,
              critic_optimizer: optim.Optimizer,
              scaler: GradScaler,
-             current_loss: float,
+             current_reward: float,  # L'argomento ora è il reward
              metadata: Optional[Dict[str, Any]] = None):
-        is_best = current_loss < self.best_loss
+
+        # La logica ora massimizza il reward
+        is_best = current_reward > self.best_reward
         if is_best:
-            self.best_loss = current_loss
+            self.best_reward = current_reward
 
         checkpoint_state = {
             'completed_step_idx': completed_step_idx,
@@ -41,11 +45,10 @@ class CheckpointManager:
             'actor_optimizer_state_dict': actor_optimizer.state_dict(),
             'critic_optimizer_state_dict': critic_optimizer.state_dict(),
             'scaler_state_dict': scaler.state_dict(),
-            'best_loss': self.best_loss,
+            'best_reward': self.best_reward,
             'metadata': metadata if metadata is not None else {}
         }
 
-        # Usa l'indice (step number = index + 1) per il nome del file per coerenza
         filename = self.checkpoint_dir / f"checkpoint_step_{completed_step_idx + 1}.pt"
         torch.save(checkpoint_state, filename)
         logging.info(f"Checkpoint salvato in: {filename}")
@@ -58,7 +61,7 @@ class CheckpointManager:
         if is_best:
             best_filename = self.checkpoint_dir / "checkpoint_best.pt"
             torch.save(checkpoint_state, best_filename)
-            logging.info(f"✨ Nuovo checkpoint migliore salvato con loss: {current_loss:.4f}")
+            logging.info(f"✨ Nuovo checkpoint migliore salvato con reward: {current_reward:.4f}")
 
     def load(self,
              device: torch.device,
@@ -68,10 +71,7 @@ class CheckpointManager:
              actor_optimizer: Optional[optim.Optimizer] = None,
              critic_optimizer: Optional[optim.Optimizer] = None,
              scaler: Optional[GradScaler] = None) -> int:
-        """
-        Carica un checkpoint in modo flessibile.
-        Restituisce l'INDICE del prossimo step da eseguire.
-        """
+
         if Path(resume_from).is_file():
             checkpoint_path = Path(resume_from)
         else:
@@ -95,7 +95,7 @@ class CheckpointManager:
         if scaler and 'scaler_state_dict' in checkpoint:
             scaler.load_state_dict(checkpoint['scaler_state_dict'])
 
-        self.best_loss = checkpoint.get('best_loss', float('inf'))
+        self.best_reward = checkpoint.get('best_reward', -float('inf'))
 
         completed_idx = checkpoint.get('completed_step_idx', -1)
         start_idx = completed_idx + 1
