@@ -46,24 +46,19 @@ graph TD
     subgraph "Data Collection / Rollout Phase"
         direction LR
         A[Start] --> OBS_IN
-        
         subgraph " "
             direction TD
             OBS_IN(Normalized Obs) --> ACTOR[🤖 ActorMPC]
-            
             subgraph Internal Actor Logic
                 direction LR
                 ACTOR -->|obs| CostNet[Cost Param Network]
                 CostNet -->|C, c| MPC[DifferentiableMPCController]
                 MPC -->|Predicted Trajectories| ACTOR
             end
-
             ACTOR -->|Action| ENV
             ACTOR -.->|Predicted Trajectories| CRITIC[🧐 EnhancedCriticTransformer]
         end
-
-        CRITIC -->|Value Estimate| Buffer
-        
+        CRITIC -->|Value Estimate| Buffer   
         subgraph Environment Interaction
             direction TD
             ENV[ParallelEnvManager<br/>AggressiveDynamicWaypointEnv] -->|Raw Obs| VEC[VecNormalize]
@@ -71,34 +66,26 @@ graph TD
         end
         ENV --> |Reward, Done, History| Buffer[Rollout Buffer]
     end
-
     Buffer -->|Sampled Batches| TRAIN_LOOP
-
     subgraph "Training / Update Phase"
         direction TD
-        TRAIN_LOOP[🔄 Training Loop Coordinator]
-        
+        TRAIN_LOOP[🔄 Training Loop Coordinator]     
         subgraph PPO Update Logic
             GAE[GAE Computation] --> LOSS[Loss Computation<br/>(Policy, Value, Entropy, MPVE)]
             LOSS --> OPTIM[Gradient Update<br/>(Adam Optimizer)]
-        end
-        
+        end  
         TRAIN_LOOP --> GAE
         OPTIM -->|Updated Weights| ACTOR
         OPTIM -->|Updated Weights| CRITIC
     end
-
     TRAIN_LOOP -->|Model States, Metrics| CHECKPOINT[💾 CheckpointManager]
     CHECKPOINT -->|Best Model| DISK[(File System)]
-
-
     %% Styling
     classDef actor fill:#e0f7fa,stroke:#00796b,stroke-width:2px;
     classDef critic fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
     classDef env fill:#fce4ec,stroke:#d81b60,stroke-width:2px;
     classDef train fill:#e8eaf6,stroke:#303f9f,stroke-width:2px;
     classDef data fill:#e0e0e0,stroke:#424242,stroke-width:1px,stroke-dasharray: 5 5;
-
     class ACTOR,CostNet,MPC actor
     class CRITIC critic
     class ENV,VEC env
