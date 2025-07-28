@@ -42,7 +42,69 @@ In this library, we leverage this capability for the Critic network:
 * **Adaptive Behavior through Memory**: This architecture unlocks qualitatively new capabilities. An agent equipped with such a policy can adapt its strategy **within a single episode**. For instance, after stumbling on a new type of terrain, the agent can "remember" this event (as it is still in its context window) and adjust its behavior when it encounters that terrain again moments later. This is a fundamental step towards truly adaptive systems.
 
 ### Architectural Flowchart
-TODO
+%% Workflow Diagram for Differentiable MPC-PPO Architecture
+graph TD
+    subgraph "Data Collection / Rollout Phase"
+        direction LR
+        A[Start] --> OBS_IN
+        
+        subgraph " "
+            direction TD
+            OBS_IN(Normalized Obs) --> ACTOR[🤖 ActorMPC]
+            
+            subgraph Internal Actor Logic
+                direction LR
+                ACTOR -->|obs| CostNet[Cost Param Network]
+                CostNet -->|C, c| MPC[DifferentiableMPCController]
+                MPC -->|Predicted Trajectories| ACTOR
+            end
+
+            ACTOR -->|Action| ENV
+            ACTOR -.->|Predicted Trajectories| CRITIC[🧐 EnhancedCriticTransformer]
+        end
+
+        CRITIC -->|Value Estimate| Buffer
+        
+        subgraph Environment Interaction
+            direction TD
+            ENV[ParallelEnvManager<br/>AggressiveDynamicWaypointEnv] -->|Raw Obs| VEC[VecNormalize]
+            VEC --> OBS_IN
+        end
+        ENV --> |Reward, Done, History| Buffer[Rollout Buffer]
+    end
+
+    Buffer -->|Sampled Batches| TRAIN_LOOP
+
+    subgraph "Training / Update Phase"
+        direction TD
+        TRAIN_LOOP[🔄 Training Loop Coordinator]
+        
+        subgraph PPO Update Logic
+            GAE[GAE Computation] --> LOSS[Loss Computation<br/>(Policy, Value, Entropy, MPVE)]
+            LOSS --> OPTIM[Gradient Update<br/>(Adam Optimizer)]
+        end
+        
+        TRAIN_LOOP --> GAE
+        OPTIM -->|Updated Weights| ACTOR
+        OPTIM -->|Updated Weights| CRITIC
+    end
+
+    TRAIN_LOOP -->|Model States, Metrics| CHECKPOINT[💾 CheckpointManager]
+    CHECKPOINT -->|Best Model| DISK[(File System)]
+
+
+    %% Styling
+    classDef actor fill:#e0f7fa,stroke:#00796b,stroke-width:2px;
+    classDef critic fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef env fill:#fce4ec,stroke:#d81b60,stroke-width:2px;
+    classDef train fill:#e8eaf6,stroke:#303f9f,stroke-width:2px;
+    classDef data fill:#e0e0e0,stroke:#424242,stroke-width:1px,stroke-dasharray: 5 5;
+
+    class ACTOR,CostNet,MPC actor
+    class CRITIC critic
+    class ENV,VEC env
+    class TRAIN_LOOP,GAE,LOSS,OPTIM,CHECKPOINT,DISK train
+    class Buffer,OBS_IN data
 ## Key Features
 
 * **`ActorMPC`**: A module whose neural network learns a map from environment observations to MPC cost function parameters. This allows the policy to adapt its short-term objectives based on the current context. It elegantly handles the difference between the observation dimension (used by the network) and the physical state dimension (used by the MPC's dynamics model).
