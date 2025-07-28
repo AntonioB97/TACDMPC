@@ -42,7 +42,6 @@ In this library, we leverage this capability for the Critic network:
 * **Adaptive Behavior through Memory**: This architecture unlocks qualitatively new capabilities. An agent equipped with such a policy can adapt its strategy **within a single episode**. For instance, after stumbling on a new type of terrain, the agent can "remember" this event (as it is still in its context window) and adjust its behavior when it encounters that terrain again moments later. This is a fundamental step towards truly adaptive systems.
 
 ### Architectural Flowchart
-%% Workflow Diagram for Differentiable MPC-PPO Architecture
 graph TD
     subgraph "Data Collection / Rollout Phase"
         direction LR
