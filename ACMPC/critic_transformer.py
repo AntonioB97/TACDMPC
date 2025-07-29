@@ -30,10 +30,8 @@ class CriticTransformer(nn.Module):
         # Layer per proiettare i token di stato nello spazio nascosto del Transformer
         self.embed = nn.Linear(self.token_dim, hidden_size)
 
-        # La sequenza più lunga che il critico può vedere è la traiettoria predetta dall'MPC
         max_seq_length = pred_horizon + history_len
 
-        # Configurazione standard di un Transformer (stile BERT)
         config = BertConfig(
             hidden_size=hidden_size,
             num_hidden_layers=num_layers,
@@ -54,18 +52,11 @@ class CriticTransformer(nn.Module):
         L'input `sequence_tokens` dovrebbe essere una sequenza di stati.
         Shape: (batch_size, seq_len, state_dim)
         """
-        # 1. Proietta i token di input nello spazio di embedding
+        # input in  embedding e passa al transformer
         x = self.embed(sequence_tokens)
-
-        # 2. Passa gli embedding attraverso il Transformer
         outputs = self.transformer(inputs_embeds=x)
-
-        # 3. Prendi l'output di tutti i token dall'ultimo layer
         all_token_outputs = outputs.last_hidden_state
-
-        # 4. Applica la testa di regressione per ottenere i valori
         values = self.head(all_token_outputs)
-
         # Rimuovi l'ultima dimensione (che è 1)
         return values.squeeze(-1)
 
@@ -95,9 +86,6 @@ class CriticDecisionTransformer(nn.Module):
         # Layer di embedding separati per stati e azioni
         self.embed_state = nn.Linear(state_dim, hidden_size)
         self.embed_action = nn.Linear(action_dim, hidden_size)
-
-        # L'embedding del timestep fornisce informazioni posizionali/temporali
-        # alla sequenza, un elemento chiave nei Transformer.
         max_len = pred_horizon + history_len
         self.embed_timestep = nn.Embedding(max_len, hidden_size)
 
@@ -115,8 +103,6 @@ class CriticDecisionTransformer(nn.Module):
             is_decoder=True,
         )
         self.transformer = BertModel(config)
-
-        # Testa di regressione per mappare l'output a un valore scalare
         self.head = nn.Linear(hidden_size, 1)
 
     def forward(self, states: torch.Tensor, actions: torch.Tensor, timesteps: torch.Tensor) -> torch.Tensor:
@@ -126,22 +112,15 @@ class CriticDecisionTransformer(nn.Module):
         - actions: (batch_size, seq_len, action_dim)
         - timesteps: (batch_size, seq_len)
         """
-        # 1. Calcola gli embedding per stati, azioni e timestep
+        #  Calcola gli embedding per stati, azioni e timestep
         state_embeddings = self.embed_state(states)
         action_embeddings = self.embed_action(actions)
         time_embeddings = self.embed_timestep(timesteps)
-
-        # 2. Somma gli embedding per creare i token finali.
-        #    Questa somma permette di combinare le informazioni da diverse modalità
-        #    (stato, azione, tempo) in un'unica rappresentazione.
         token_embeddings = state_embeddings + action_embeddings + time_embeddings
         token_embeddings = self.embed_ln(token_embeddings)
-
-        # 3. Passa i token al Transformer
         transformer_outputs = self.transformer(inputs_embeds=token_embeddings)
         hidden_states = transformer_outputs.last_hidden_state
 
-        # 4. Calcola i valori per ogni token nella sequenza
         values = self.head(hidden_states)
 
         return values.squeeze(-1)
